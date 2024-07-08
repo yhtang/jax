@@ -1,8 +1,23 @@
+# Copyright 2022 The JAX Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 from contextlib import contextmanager
 from functools import cache
 import os
+import socket
 import textwrap
 from jax._src import clusters
 
@@ -15,23 +30,19 @@ class K8sCluster(clusters.ClusterEnv):
 
   @classmethod
   def is_env_present(cls) -> bool:
-    if all([
-      'KUBERNETES_SERVICE_HOST' in os.environ,
-      'POD_NAME' in os.environ
-    ]):
+    if 'KUBERNETES_SERVICE_HOST' in os.environ:
       try:
         import kubernetes as k8s  # pytype: disable=import-error
       except ImportError as e:
-        print('--------------------------------------------------------')
-        print(textwrap.fill(
-          "Kubernetes environment detected, but the `kubernetes` package is "
-          "not installed for automatic bootstrapping in this environment. "
-          "To fix, install jax with the [k8s] extra. For example:"
-        ))
-        print('    pip install jax[k8s]')
-        print('    pip install jax[k8s,<MORE-EXTRAS...>]')
-        print('--------------------------------------------------------')
-        raise e
+        err_msg = [textwrap.fill(
+            "Kubernetes environment detected, but the `kubernetes` package is "
+            "not installed for automatic bootstrapping in this environment. "
+            "To fix, install jax with the [k8s] extra. For example:"
+          ),
+          '    pip install jax[k8s]',
+          '    pip install jax[k8s,<MORE-EXTRAS...>]',
+        ]
+        raise ImportError('\n'.join(err_msg)) from e
       k8s.config.load_incluster_config()
       cls._core_api = k8s.client.CoreV1Api()
       cls._batch_api = k8s.client.BatchV1Api()
@@ -41,10 +52,23 @@ class K8sCluster(clusters.ClusterEnv):
       return False
 
   @classmethod
-  @cache
-  def _pod_name(cls):
-    return os.getenv('POD_NAME')
-
+  @contextmanager
+  def _handle_api_exception(cls):
+    try:
+      yield
+    except cls._ApiException as e:
+      err_msg = [f"Kubernetes API Error: {e.status} - {e.reason}"]
+      if e.status == 403:
+        err_msg.append(textwrap.fill(
+          "It appears that the Kubernetes service account (SA) associated with "
+          "this job does not have the permission for pod introspection. Please "
+          "either grant the default SA permission to read pod info, or create a "
+          "dedicated service account with the permission and associated with "
+          "the job. For more details, see <PLACERHOLDER_LINK>.",
+          width=80
+        ))
+      raise RuntimeError('\n'.join(err_msg)) from e
+      
   @classmethod
   @cache
   def _namespace(cls):
@@ -53,32 +77,17 @@ class K8sCluster(clusters.ClusterEnv):
     ).read().strip()
 
   @classmethod
-  @contextmanager
-  def _handle_api_exception(cls):
-    try:
-      yield
-    except cls._ApiException as e:
-      print(f"Kubernetes API Error: {e.status} - {e.reason}")
-      if e.status == 403:
-        print('--------------------------------------------------------')
-        print(textwrap.fill(
-          "It appears that the Kubernetes service account (SA) associated with "
-          "this job does not have the permission for pod introspection. Please "
-          "either grant the default SA permission to read pod info, or create a "
-          "dedicated service account with the permission and associated with "
-          "the job. For more details, see <PLACERHOLDER_LINK>.",
-          width=80
-        ))
-        print('--------------------------------------------------------')
-      raise e
-
-  @classmethod
   @cache
   def _pod(cls):
     with cls._handle_api_exception():
-      return cls._core_api.read_namespaced_pod(
-        name=cls._pod_name(), namespace=cls._namespace()
-      )
+      ip = socket.gethostbyname(os.getenv('HOSTNAME'))
+      pods = cls._core_api.list_namespaced_pod(
+        namespace=cls._namespace(),
+        field_selector=f'status.podIP={ip}'
+      ).items
+      assert len(pods) == 1, \
+        f"Exactly 1 Kubernetes pod should have IP {ip}, got {len(pods)}."
+      return pods[0]
 
   @classmethod
   @cache
