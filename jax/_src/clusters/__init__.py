@@ -24,3 +24,4 @@ from .ompi_cluster import OmpiCluster
 from .slurm_cluster import SlurmCluster
 from .cloud_tpu_cluster import GkeTpuCluster
 from .cloud_tpu_cluster import GceTpuCluster
+from .k8s_cluster import K8sCluster

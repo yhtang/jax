@@ -1,0 +1,115 @@
+from __future__ import annotations
+
+import os
+from contextlib import contextmanager
+from functools import cache
+import urllib.request
+import json
+import ssl
+import textwrap
+from jax._src import clusters
+
+
+class K8sCluster(clusters.ClusterEnv):
+
+  # Use an arbitrarily chosen port for the coordinator since we cannot
+  # rely on communication to choose one in real time.
+  _coordinator_port = '55527'
+
+  @classmethod
+  def is_env_present(cls) -> bool:
+    if 'KUBERNETES_SERVICE_HOST' in os.environ:
+      try:
+        import kubernetes as k8s  # pytype: disable=import-error
+      except ImportError as e:
+        print('--------------------------------------------------------')
+        print(textwrap.fill(
+          "Kubernetes environment detected, but the `kubernetes` package is "
+          "not installed for automatic bootstrapping in this environment. "
+          "To fix, install jax with the [k8s] extra. For example:"
+        ))
+        print('    pip install jax[k8s]')
+        print('    pip install jax[k8s,<MORE-EXTRAS...>]')
+        print('--------------------------------------------------------')
+        raise e
+      k8s.config.load_incluster_config()
+      cls.core_api = k8s.client.CoreV1Api()
+      cls.batch_api = k8s.client.BatchV1Api()
+      cls.ApiException = k8s.client.exceptions.ApiException
+      return True
+    else:
+      return False
+
+  @classmethod
+  @cache
+  def pod_name(cls):
+    return os.getenv('POD_NAME')
+    # if pod_name is None:
+    #   raise ValueError('Cannot find environment variable: POD_NAME')
+
+  @classmethod
+  @cache
+  def namespace(cls):
+    return open(
+      '/var/run/secrets/kubernetes.io/serviceaccount/namespace'
+    ).read().strip()
+
+  @classmethod
+  @contextmanager
+  def handle_api_exception(cls):
+    try:
+      yield
+    except cls.ApiException as e:
+      print(f"Kubernetes API Error: {e.status} - {e.reason}")
+      if e.status == 403:
+        print('--------------------------------------------------------')
+        print(textwrap.fill(
+          "It appears that the Kubernetes service account (SA) associated with "
+          "this job does not have the permission for pod introspection. Please "
+          "either grant the default SA permission to read pod info, or create a "
+          "dedicated service account with the permission and associated with "
+          "the job. For more details, see <PLACERHOLDER_LINK>.",
+          width=80
+        ))
+        print('--------------------------------------------------------')
+      raise e
+
+  @classmethod
+  @cache
+  def pod(cls):
+    with cls.handle_api_exception():
+      return cls.core_api.read_namespaced_pod(
+        name=cls.pod_name(), namespace=cls.namespace()
+      )
+
+  @classmethod
+  @cache
+  def job(cls):
+    with cls.handle_api_exception():
+      return cls.batch_api.read_namespaced_job(
+        name=cls.pod().metadata.labels['job-name'], namespace=cls.namespace()
+      )
+
+  @classmethod
+  def get_coordinator_address(cls, timeout_secs: int | None) -> str:
+    return '{job_name}-0.{jobset_name}:{port}'.format(
+      job_name=cls.pod().metadata.labels['job-name'],
+      jobset_name=cls.job().metadata.labels['jobset.sigs.k8s.io/jobset-name'],
+      port=cls._coordinator_port
+    )
+
+  @classmethod
+  def get_process_count(cls) -> int:
+    # Reference: https://kubernetes.io/docs/concepts/workloads/controllers/job/#controlling-parallelism
+    # pods/<POD_NAME> | .metadata.labels.job-name
+    # jobs/<JOB_NAME> | .metadata.spec.parallelism
+    return cls.job().spec.parallelism
+
+  @classmethod
+  def get_process_id(cls) -> int:
+    # Reference: https://kubernetes.io/docs/concepts/workloads/controllers/job/#completion-mode
+    # JOB_COMPETION_INDEX
+    try:
+      return int(os.environ['JOB_COMPLETION_INDEX'])
+    except KeyError:
+      raise RuntimeError('K8s job must be run with `completionMode: "Indexed"`.')
