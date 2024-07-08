@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import os
 from contextlib import contextmanager
 from functools import cache
-import urllib.request
-import json
-import ssl
+import os
 import textwrap
 from jax._src import clusters
 
