@@ -19,6 +19,7 @@ from functools import cache
 import os
 import socket
 import textwrap
+import time
 import warnings
 from jax._src import clusters
 
@@ -102,11 +103,43 @@ class K8sCluster(clusters.ClusterEnv):
 
   @classmethod
   def get_coordinator_address(cls, timeout_secs: int | None) -> str:
-    return '{job_name}-0.{jobset_name}:{port}'.format(
+    coordinator_hostname = '{job_name}-0.{jobset_name}'.format(
       job_name=cls._pod().metadata.labels['job-name'],
-      jobset_name=cls._job().metadata.labels['jobset.sigs.k8s.io/jobset-name'],
+      jobset_name=cls._job().metadata.labels['jobset.sigs.k8s.io/jobset-name']
+    )
+    if timeout_secs:
+      cls.wait_for_coordinator(coordinator_hostname, timeout_secs)
+    return '{hostname}:{port}'.format(
+      hostname=coordinator_hostname,
       port=cls._coordinator_port
     )
+
+  @classmethod
+  def wait_for_coordinator(cls, coordinator_address, timeout_secs):
+    # The coordinator pod may not be up before the other hosts try to
+    # communicate with it. We check for its existence with retries.
+    coordinator_found = False
+    max_time = time.time() + timeout_secs
+    coordinator_retry_secs = 0.1
+    coordinator_retry_exponent = 1.1
+    coordinator_retry_max_secs = 5
+    while not coordinator_found and time.time() < max_time:
+      try:
+        ip_address = socket.gethostbyname(coordinator_address)
+        coordinator_found = True
+        logger.debug("Found coordinator with address %s", coordinator_address)
+      except socket.gaierror:
+        logger.debug(
+            "Failed to recognize coordinator address %s"
+            " retrying...", coordinator_address
+        )
+        time.sleep(coordinator_retry_secs)
+        coordinator_retry_secs = min(
+          coordinator_retry_secs * coordinator_retry_exponent,
+          coordinator_retry_max_secs
+        )
+    if not coordinator_found:
+      raise RuntimeError(f"Failed to recognize coordinator address {coordinator_address}")
 
   @classmethod
   def get_process_count(cls) -> int:

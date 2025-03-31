@@ -106,7 +106,8 @@ class BaseTpuCluster(clusters.ClusterEnv):
       coordinator_address = cls._get_worker_list_in_slice()[0]
     coordinator_address = coordinator_address.split(':')[0]
     logger.debug("TPU Cluster using coordinator address: %s", coordinator_address)
-    cls.wait_for_coordinator(coordinator_address, timeout_secs)
+    if timeout_secs:
+      cls.wait_for_coordinator(coordinator_address, timeout_secs)
     return f'{coordinator_address}:{coordinator_port}'
 
   @classmethod
