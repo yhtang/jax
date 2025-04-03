@@ -6,11 +6,13 @@ on:
       - main
     paths:
       - 'jax/_src/clusters/**'
+      - 'jax/_src/distributed.py'
   pull_request:
     branches:
       - main
     paths:
       - 'jax/_src/clusters/**'
+      - 'jax/_src/distributed.py'
 
 permissions:
   contents: read
