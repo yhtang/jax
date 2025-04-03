@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'jax/_src/clusters/**'
   pull_request:
     branches:
       - main
+    paths:
+      - 'jax/_src/clusters/**'
 
 permissions:
   contents: read
