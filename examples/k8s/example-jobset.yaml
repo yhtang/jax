@@ -21,18 +21,17 @@ spec:
               image: ghcr.io/nvidia/jax:jax
               imagePullPolicy: Always
               resources:
-                requests:
-                  cpu: 900m
-                  nvidia.com/gpu: null
                 limits:
-                  cpu: 1
-                  nvidia.com/gpu: null
+                  cpu: 900m
+                  nvidia.com/gpu: 1
               command: 
                 - python
               args:
                 - -c
                 - |
                   import jax
+                  import time
+                  time.sleep(3)
                   jax.distributed.initialize()
                   print(jax.devices())
                   print(jax.local_devices())

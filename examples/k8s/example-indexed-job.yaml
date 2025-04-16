@@ -22,15 +22,15 @@ spec:
             cpu: 900m
             nvidia.com/gpu: 1
         command: 
-          - sleep
-          # - python
+          - python
         args:
-          - infinity
-          # - -c
-          # - |
-          #   import jax
-          #   jax.distributed.initialize()
-          #   print(jax.devices())
-          #   print(jax.local_devices())
-          #   assert jax.process_count() > 1
-          #   assert len(jax.devices()) > len(jax.local_devices())
+          - -c
+          - |
+            import jax
+            import time
+            time.sleep(3)
+            jax.distributed.initialize()
+            print(jax.devices())
+            print(jax.local_devices())
+            assert jax.process_count() > 1
+            assert len(jax.devices()) > len(jax.local_devices())
