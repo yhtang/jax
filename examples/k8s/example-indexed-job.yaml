@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: example-indexed-job
+spec:
+  parallelism: 2
+  completions: 2
+  completionMode: Indexed
+  backoffLimit: 0
+  template:
+    spec:
+      serviceAccountName: training-job-sa
+      restartPolicy: Never
+      imagePullSecrets: 
+      - name: null
+      containers:
+      - name: main
+        image: ghcr.io/nvidia/jax:jax
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 900m
+            nvidia.com/gpu: 1
+        command: 
+          - sleep
+          # - python
+        args:
+          - infinity
+          # - -c
+          # - |
+          #   import jax
+          #   jax.distributed.initialize()
+          #   print(jax.devices())
+          #   print(jax.local_devices())
+          #   assert jax.process_count() > 1
+          #   assert len(jax.devices()) > len(jax.local_devices())

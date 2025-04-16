@@ -103,12 +103,33 @@ class K8sCluster(clusters.ClusterEnv):
       )
 
   @classmethod
-  def get_coordinator_address(cls, timeout_secs: int | None) -> str:
-    return '{job_name}-0.{jobset_name}:{port}'.format(
-      job_name=cls._pod().metadata.labels['job-name'],
-      jobset_name=cls._job().metadata.labels['jobset.sigs.k8s.io/jobset-name'],
-      port=cls._coordinator_port
+  @cache
+  def _controller(cls):
+    # https://github.com/kubernetes/apimachinery/blob/7b4292b/pkg/apis/meta/v1/types.go#L235
+    # states that there cannot be more than one managing controller.
+    for owner in cls._pod().metadata.owner_references:
+      if owner.controller is True:
+        return owner
+    
+    raise RuntimeError(
+      'Cannot automatically initialize distributed workload: '
+      f'pod {cls._pod().metadata.name} does not have a controller.'
     )
+
+  @classmethod
+  def get_coordinator_address(cls, timeout_secs: int | None) -> str:
+    controller = cls._controller()
+    if controller.kind == 'JobSet':
+      return '{job_name}-0.{jobset_name}:{port}'.format(
+        job_name=cls._job().metadata.name,
+        jobset_name=cls._job().metadata.labels['jobset.sigs.k8s.io/jobset-name'],
+        port=cls._coordinator_port
+      )
+    elif controller.kind == 'Job':
+      return '{job_name}-0.{jobset_name}:{port}'.format(
+        job_name=cls._job().metadata.name,
+        port=cls._coordinator_port
+      )
 
   @classmethod
   def get_process_count(cls) -> int:

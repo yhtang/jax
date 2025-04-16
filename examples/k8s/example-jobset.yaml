@@ -1,7 +1,7 @@
 apiVersion: jobset.x-k8s.io/v1alpha2
 kind: JobSet
 metadata:
-  name: example
+  name: example-jobset
 spec:
   replicatedJobs:
   - name: workers
@@ -18,8 +18,8 @@ spec:
             - name: null
             containers:
             - name: main
-              image: PLACEHOLDER
-              imagePullPolicy: IfNotPresent
+              image: ghcr.io/nvidia/jax:jax
+              imagePullPolicy: Always
               resources:
                 requests:
                   cpu: 900m
