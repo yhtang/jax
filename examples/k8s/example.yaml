@@ -3,6 +3,8 @@ kind: JobSet
 metadata:
   name: example
 spec:
+  network:
+    publishNotReadyAddresses: false
   replicatedJobs:
   - name: workers
     template:
@@ -18,23 +20,35 @@ spec:
             - name: null
             containers:
             - name: main
-              image: PLACEHOLDER
+              image: local/jax:latest
               imagePullPolicy: IfNotPresent
               resources:
-                requests:
-                  cpu: 900m
-                  nvidia.com/gpu: null
                 limits:
-                  cpu: 1
-                  nvidia.com/gpu: null
-              command: 
-                - python
-              args:
+                  cpu: 900m
+                  nvidia.com/gpu: 1
+              command:
+                - bash
                 - -c
                 - |
+                  python <<EOF
                   import jax
                   jax.distributed.initialize()
                   print(jax.devices())
                   print(jax.local_devices())
                   assert jax.process_count() > 1
                   assert len(jax.devices()) > len(jax.local_devices())
+                  EOF
+              readinessProbe:
+                exec:
+                  command:
+                    - bash
+                    - -c
+                    - |
+                      if [[ $JOB_COMPLETION_INDEX == 0 ]]; then
+                        sleep 1
+                      fi
+                      exit 0
+                initialDelaySeconds: 0
+                periodSeconds: 1
+                timeoutSeconds: 10
+                failureThreshold: 10
