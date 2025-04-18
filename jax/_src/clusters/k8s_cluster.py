@@ -20,8 +20,21 @@ import os
 import socket
 import textwrap
 import warnings
+from tenacity import (
+  retry,
+  stop_after_attempt,
+  stop_after_delay,
+  wait_exponential_jitter,
+  retry_if_exception_type,
+  before_log,
+  after_log
+)
 from jax._src import clusters
+from .util import wait_for_host
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 class K8sCluster(clusters.ClusterEnv):
 
@@ -83,16 +96,22 @@ class K8sCluster(clusters.ClusterEnv):
 
   @classmethod
   @cache
+  @retry(
+    stop=(stop_after_attempt(7) | stop_after_delay(5)),
+    wait=wait_exponential_jitter(0.1, jitter=0.5),
+    retry=retry_if_exception_type((ValueError)),
+    reraise=True,
+    before=before_log(logger, logging.WARNING),
+    after=after_log(logger, logging.WARNING),
+  )
   def _pod(cls):
+    ip = socket.gethostbyname(os.getenv('HOSTNAME'))
     with cls._handle_api_exception():
-      ip = socket.gethostbyname(os.getenv('HOSTNAME'))
-      pods = cls._core_api.list_namespaced_pod(
+      [pod] = cls._core_api.list_namespaced_pod(
         namespace=cls._namespace(),
         field_selector=f'status.podIP={ip}'
       ).items
-      assert len(pods) == 1, \
-        f"Exactly 1 Kubernetes pod should have IP {ip}, got {len(pods)}."
-      return pods[0]
+    return pod
 
   @classmethod
   @cache
@@ -104,11 +123,30 @@ class K8sCluster(clusters.ClusterEnv):
 
   @classmethod
   def get_coordinator_address(cls, timeout_secs: int | None) -> str:
-    return '{job_name}-0.{jobset_name}:{port}'.format(
+    coordinator_hostname = '{job_name}-0.{jobset_name}'.format(
       job_name=cls._pod().metadata.labels['job-name'],
-      jobset_name=cls._job().metadata.labels['jobset.sigs.k8s.io/jobset-name'],
+      jobset_name=cls._job().metadata.labels['jobset.sigs.k8s.io/jobset-name']
+    )
+    if timeout_secs:
+        # The host pod may not be up before the other hosts try to
+        # communicate with it. We check for its existence with retries.
+        @retry(
+          stop=(stop_after_delay(timeout_secs)),
+          wait=wait_exponential_jitter(0.1, jitter=0.5),
+          retry=retry_if_exception_type((socket.gaierror)),
+          reraise=True,
+          before=before_log(logger, logging.WARNING),
+          after=after_log(logger, logging.WARNING),
+        )
+        def wait_for_host(hostname):
+          socket.gethostbyname(hostname)
+
+        wait_for_host(coordinator_hostname)
+    return '{hostname}:{port}'.format(
+      hostname=coordinator_hostname,
       port=cls._coordinator_port
     )
+
 
   @classmethod
   def get_process_count(cls) -> int:
