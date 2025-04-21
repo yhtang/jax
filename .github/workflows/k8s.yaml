@@ -41,7 +41,10 @@ jobs:
         uses: medyagh/setup-minikube@cea33675329b799adccc9526aa5daccc26cd5052 # ratchet:medyagh/setup-minikube@v0.0.19
 
       - name: Install K8s Jobset
-        run: kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/v0.8.0/manifests.yaml
+        run: |
+          kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/v0.8.0/manifests.yaml
+          kubectl wait --for=condition=established crd/jobsets.jobset.x-k8s.io --timeout=60s
+          kubectl rollout status -n jobset-system deploy/jobset-controller-manager --timeout=120s
 
       - name: Build image
         run: minikube image build -t local/jax:latest .github/workflows/k8s/
