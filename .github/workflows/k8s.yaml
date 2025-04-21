@@ -46,33 +46,16 @@ jobs:
 
       - name: Build image
         run: |
-          cat > Dockerfile <<EOF
-          FROM ubuntu:22.04
-          ADD jax /opt/jax
-          RUN apt-get update && apt-get install -y python-is-python3 python3-pip
-          RUN pip install -e /opt/jax[k8s]
-          EOF
-
-          minikube image build -t local/jax:latest .
+          minikube image build -t local/jax:latest .github/workflows/k8s/
 
       - name: Create service account for K8s job introspection
         run: |
           kubectl apply -f jax/examples/k8s/svc-acct.yaml
 
-      - name: Prepare test job
-        run: |
-          export VERSION=v4.44.3
-          export BINARY=yq_linux_amd64
-          wget https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY} -O /usr/bin/yq && chmod +x /usr/bin/yq
-
-          cat jax/examples/k8s/example.yaml |\
-            yq '.spec.replicatedJobs[0].template.spec.template.spec.containers[0].image = "local/jax:latest"' |\
-            yq '.spec.replicatedJobs[0].template.spec.template.spec.containers[0].imagePullPolicy = "Never"' |\
-            tee example.yaml
-
       - name: Submit test job
+        working-directory: .github/workflows/k8s/
         run: |
-          kubectl apply -f example.yaml
+          kubectl apply -f jobset.yaml
 
       - name: Check job status
         shell: bash -e -o pipefail {0}
