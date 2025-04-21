@@ -55,6 +55,8 @@ jobs:
       - name: Submit test job
         working-directory: .github/workflows/k8s/
         run: |
+          pwd
+          ls
           kubectl apply -f jobset.yaml
 
       - name: Check job status
