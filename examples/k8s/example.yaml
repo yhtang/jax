@@ -15,7 +15,7 @@ spec:
             serviceAccountName: training-job-sa  # kubectl apply -f svc-acct.yaml
             restartPolicy: Never
             imagePullSecrets:
-            - name: null # https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+            - name: null # https://k8s.io/docs/tasks/configure-pod-container/pull-image-private-registry/
             containers:
             - name: main
               image: null # e.g. ghcr.io/nvidia/jax:jax
@@ -23,7 +23,7 @@ spec:
               resources:
                 limits:
                   cpu: 900m
-                  nvidia.com/gpu: null # https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus/
+                  nvidia.com/gpu: null # https://k8s.io/docs/tasks/manage-gpus/scheduling-gpus/
               command: 
                 - python
               args:
