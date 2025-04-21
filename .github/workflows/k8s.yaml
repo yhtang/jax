@@ -53,10 +53,7 @@ jobs:
         run: kubectl apply -f examples/k8s/svc-acct.yaml
 
       - name: Submit test job
-        run: |
-          kubectl get pods -A
-          kubectl get svc -A
-          kubectl apply -f .github/workflows/k8s/jobset.yaml
+        run: kubectl apply -f .github/workflows/k8s/jobset.yaml
 
       - name: Check job status
         shell: bash -e -o pipefail {0}

@@ -17,7 +17,7 @@ spec:
             containers:
             - name: main
               image: local/jax:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Never
               resources:
                 limits:
                   cpu: 900m
