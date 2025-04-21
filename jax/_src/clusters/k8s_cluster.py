@@ -126,7 +126,7 @@ class K8sCluster(clusters.ClusterEnv):
         port=cls._coordinator_port
       )
     elif controller.kind == 'Job':
-      return '{job_name}-0.{jobset_name}:{port}'.format(
+      return '{job_name}-0:{port}'.format(
         job_name=cls._job().metadata.name,
         port=cls._coordinator_port
       )
