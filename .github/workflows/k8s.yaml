@@ -53,11 +53,11 @@ jobs:
           kubectl apply -f jax/examples/k8s/svc-acct.yaml
 
       - name: Submit test job
-        working-directory: .github/workflows/k8s/
+        # working-directory: 
         run: |
           pwd
           ls
-          kubectl apply -f jobset.yaml
+          kubectl apply -f .github/workflows/k8s/jobset.yaml
 
       - name: Check job status
         shell: bash -e -o pipefail {0}
