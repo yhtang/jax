@@ -119,17 +119,29 @@ class K8sCluster(clusters.ClusterEnv):
   @classmethod
   def get_coordinator_address(cls, timeout_secs: int | None) -> str:
     controller = cls._controller()
-    if controller.kind == 'JobSet':
-      return '{job_name}-0.{jobset_name}:{port}'.format(
-        job_name=cls._job().metadata.name,
-        jobset_name=cls._job().metadata.labels['jobset.sigs.k8s.io/jobset-name'],
-        port=cls._coordinator_port
-      )
-    elif controller.kind == 'Job':
-      return '{job_name}-0:{port}'.format(
-        job_name=cls._job().metadata.name,
-        port=cls._coordinator_port
-      )
+    job = cls._job()
+    pod = cls._pod()
+    if controller.kind == 'Job':
+      # if job belongs to a jobset
+      if 'jobset.sigs.k8s.io/jobset-name' in job.metadata.labels:
+        return '{job_name}-0.{subdomain}:{port}'.format(
+          job_name=job.metadata.name,
+          subdomain=job.metadata.labels['jobset.sigs.k8s.io/jobset-name'],
+          port=cls._coordinator_port
+        )
+      # if job is standalone
+      elif controller.kind == 'Job':
+        # check if the job is associated with a headless service, which is
+        # necessary for pods to communicate with each other
+        if pod.spec.subdomain is not None:
+          return '{job_name}-0.{subdomain}:{port}'.format(
+            job_name=job.metadata.name,
+            subdomain=pod.spec.subdomain,
+            port=cls._coordinator_port
+          )
+        else:
+          # infer subdomain from svc list
+          pass
 
   @classmethod
   def get_process_count(cls) -> int:
