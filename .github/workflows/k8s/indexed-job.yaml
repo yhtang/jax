@@ -13,8 +13,8 @@ kind: Job
 metadata:
   name: jaxjob
 spec:
-  parallelism: 2
-  completions: 2
+  parallelism: 8
+  completions: 8
   completionMode: Indexed
   backoffLimit: 0
   template:
@@ -28,7 +28,7 @@ spec:
         imagePullPolicy: IfNotPresent
         resources:
           limits:
-            cpu: 900m
+            cpu: 100m
         command: 
           - python
         args:

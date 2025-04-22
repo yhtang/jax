@@ -69,7 +69,7 @@ jobs:
         run: kubectl apply -f jax/.github/workflows/k8s/${{ matrix.controller }}.yaml
 
       - name: Check job status
-        shell: bash -ex -o pipefail {0}
+        shell: bash -e -o pipefail {0}
         run: |
           while true; do
 

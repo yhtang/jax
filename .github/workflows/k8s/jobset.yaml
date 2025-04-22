@@ -7,8 +7,8 @@ spec:
   - name: workers
     template:
       spec:
-        parallelism: 2
-        completions: 2
+        parallelism: 8
+        completions: 8
         backoffLimit: 0
         template:
           spec:
@@ -20,7 +20,7 @@ spec:
               imagePullPolicy: Never
               resources:
                 limits:
-                  cpu: 900m
+                  cpu: 100m
               command:
                 - python
               args:
