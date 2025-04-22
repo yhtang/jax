@@ -1,7 +1,7 @@
 apiVersion: jobset.x-k8s.io/v1alpha2
 kind: JobSet
 metadata:
-  name: example
+  name: jaxjob
 spec:
   replicatedJobs:
   - name: workers
@@ -12,7 +12,7 @@ spec:
         backoffLimit: 0
         template:
           spec:
-            serviceAccountName: training-job-sa
+            serviceAccountName: jax-job-sa
             restartPolicy: Never
             containers:
             - name: main
