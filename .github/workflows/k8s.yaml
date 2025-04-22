@@ -72,24 +72,35 @@ jobs:
         shell: bash -ex -o pipefail {0}
         run: |
           while true; do
-            status=$(
+
+            completion_time=$(
               kubectl get jobs -o yaml | \
-              yq '.items[] | select(.metadata.name | test("^jaxjob")) | .status.conditions[0].type'
+              yq '.items[] | select(.metadata.name | test("^jaxjob")) | .status.completionTime'
             )
             timestamp=$(date +"%Y-%m-%d %H:%M:%S")
             echo "[$timestamp] Checking job status..."
 
-            if [ "$status" == "Complete" ]; then
-              echo "[$timestamp] Job has completed successfully!"
-              exit 0
-            elif [ "$status" == "Failed" ]; then
-              echo "[$timestamp] Job has failed!"
-              exit 1
-            else
+            if [ "$completion_time" == "null" ]; then
               echo "[$timestamp] Job is still running. Current pod status:"
               kubectl get pods --no-headers
               echo "[$timestamp] Waiting for 3 seconds before checking again..."
               sleep 3
+            else
+              succeeded=$(
+                kubectl get jobs -o yaml | \
+                yq '.items[] | select(.metadata.name | test("^jaxjob")) | .status.succeeded'
+              )
+              parallelism=$(
+                kubectl get jobs -o yaml | \
+                yq '.items[] | select(.metadata.name | test("^jaxjob")) | .spec.parallelism'
+              )
+              if [ "$succeeded" == "$parallelism" ]; then
+                echo "[$timestamp] Job has completed successfully!"
+                exit 0
+              else
+                echo "[$timestamp] Job has failed!"
+                exit 1
+              fi
             fi
           done
 
