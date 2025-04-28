@@ -312,6 +312,83 @@ and running computations. The remaining Python code examples in this tutorial
 are meant to be run on all processes simultaneously, after running
 {func}`jax.distributed.initialize`.
 
+### Kubernetes
+
+Running multi‑controller JAX on a Kubernetes cluster is almost identical in spirit to the GPU and TPU examples above: every pod runs the same Python program, JAX discovers its peers, and the cluster behaves like one giant machine.
+
+1. **Container image** – start from a JAX‑enabled image, e.g. one of the public JAX AI images on Google Artifact Registry ([TPU](https://console.cloud.google.com/artifacts/docker/cloud-tpu-images/us/jax-ai-image/tpu) / [GPU](https://console.cloud.google.com/artifacts/docker/deeplearning-images/us-central1/jax-ai-image/gpu)) or NVIDIA [NGC](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/jax) / [JAX-Toolbox](https://github.com/NVIDIA/JAX-Toolbox).
+
+2. **Workload type** – use either a [JobSet](https://github.com/kubernetes-sigs/jobset) or an [indexed Job](https://kubernetes.io/docs/concepts/workloads/controllers/job/#parallel-jobs).  Each replica corresponds to one JAX process.
+
+3. **Service Account** – JAX needs permission to list the pods that belong to the job so that processes discover their peers. A minimal RBAC setup is provided in [examples/k8s/svc-acct.yaml](https://github.com/jax-ml/jax/blob/main/examples/k8s/svc-acct.yaml).
+
+Below is a [minimal JobSet](https://github.com/jax-ml/jax/blob/main/examples/k8s/example.yaml) that launches two replicas. Replace the placeholders - 
+ image, GPU count, and any private registry secrets - with values that match your environment.
+
+```yaml
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: jaxjob
+spec:
+  replicatedJobs:
+  - name: workers
+    template:
+      spec:
+        parallelism: 2
+        completions: 2
+        backoffLimit: 0
+        template:
+          spec:
+            serviceAccountName: jax-job-sa  # kubectl apply -f svc-acct.yaml
+            restartPolicy: Never
+            imagePullSecrets:
+              # https://k8s.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+            - name: null
+            containers:
+            - name: main
+              image: null  # e.g. ghcr.io/nvidia/jax:jax
+              imagePullPolicy: Always
+              resources:
+                limits:
+                  cpu: 1
+                  # https://k8s.io/docs/tasks/manage-gpus/scheduling-gpus/
+                  nvidia.com/gpu: null
+              command: 
+                - python
+              args:
+                - -c
+                - |
+                  import jax
+                  jax.distributed.initialize()
+                  print(jax.devices())
+                  print(jax.local_devices())
+                  assert jax.process_count() > 1
+                  assert len(jax.devices()) > len(jax.local_devices())
+```
+
+Apply the manifest and watch the pods complete:
+
+```bash
+$ kubectl apply -f example.yaml
+$ kubectl get pods -l jobset.sigs.k8s.io/jobset-name=jaxjob
+NAME                       READY   STATUS      RESTARTS   AGE
+jaxjob-workers-0-0-xpx8l   0/1     Completed   0          8m32s
+jaxjob-workers-0-1-ddkq8   0/1     Completed   0          8m32s
+```
+
+When the job finishes, inspect the logs to confirm that every process saw all accelerators:
+
+```bash
+$ kubectl logs -l jobset.sigs.k8s.io/jobset-name=jaxjob
+[CudaDevice(id=0), CudaDevice(id=1)]
+[CudaDevice(id=0)]
+[CudaDevice(id=0), CudaDevice(id=1)]
+[CudaDevice(id=1)]
+```
+
+You should see identical device lists across pods, except that each pod reports a different local subset.  At this point you can replace the inline script with your real JAX program - just remember that every pod must run the same code in the same order once `jax.distributed.initialize()` has been called.
+
 ## Meshes, shardings, and computations can span processes and hosts
 
 Programming multiple processes from JAX usually looks just like programming a
